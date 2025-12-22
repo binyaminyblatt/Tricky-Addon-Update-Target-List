@@ -242,6 +242,133 @@ async function fetchkb(link, fallbackLink) {
         });
 }
 
+async function fetchotherkb(link, type) {
+    
+    fetch(link)
+    .then((response) => {
+        if (!response.ok){
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.text();
+    })
+    .then(async (data) => {
+        if (!data.trim()) {
+            showPrompt("prompt_no_valid", false);
+            return;
+        }
+        try {
+            switch (type) {
+                case 'integrity': {
+                    let text = data;
+                    for (let i = 0; i < 10; i++) {
+                        try {
+                            text = atob(text);
+                        } catch {
+                            break;
+                        }
+                    }
+                    text = text.replace(/[^0-9a-fA-F]/g, "");
+                    let hexDecoded = "";
+                    for (let i = 0; i < text.length; i += 2)
+                        hexDecoded += String.fromCharCode(parseInt(text.substr(i, 2), 16));
+                    let result = hexDecoded.replace(/[a-zA-Z]/g, (c) =>
+                        String.fromCharCode(c.charCodeAt(0) + (c.toLowerCase() < "n" ? 13 : -13))
+                    );
+                    const badWords = ["Words", "Can", "Describe", "The", "Human", "Race"];
+                    result = result.replace(
+                        new RegExp(`\\b(${badWords.join("|")})\\b`, "gi"),
+                        ""
+                    );
+                    result = result.replace(
+                        /<\/AndroidAttestation>\s*<\/AndroidAttestation>/g,
+                        "</AndroidAttestation>"
+                    );
+                    data = result;
+                    break;
+                }
+                case 'yurikeyold': {
+                    data = atob(data);
+                    break;
+                }
+                case 'yurikey': {
+                    // Check if content is a shell script
+                    const decoded = atob(data);
+                    const shellMatch = decoded.match(/KEYBOX_BASE64_PAYLOAD=["']([^"']+)["']/);
+                    if (!shellMatch) {
+                        throw new Error("Cant find keybox payload");
+                    }
+                    data = atob(shellMatch[1]);
+                    break;
+                }
+                default:
+                    throw new Error("Unknown keybox type");
+            }
+            
+            // Validate XML
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(data, "application/xml");
+            const parserError = xmlDoc.getElementsByTagName("parsererror");
+            if (parserError.length > 0) {
+                console.error("Invalid keybox XML", parserError[0].textContent);
+                showPrompt("prompt_key_invalid_xml", false);
+                return;
+            }
+
+            const source = data;
+            const result = await setKeybox(source);
+            if (result) {
+                showPrompt("prompt_valid_key_set");
+            } else {
+                throw new Error("Failed to copy valid keybox");
+            }
+        } catch (error) {
+            throw new Error("Failed to decode keybox data");
+        }
+    })
+    .catch(async (error) => {
+        showPrompt("prompt_no_internet", false);
+    });
+}
+
+async function buildIntegrityUrlFromGithub(scriptUrl) {
+    const res = await fetch(scriptUrl);
+    if (!res.ok) throw new Error("Failed to fetch script");
+
+    const script = await res.text();
+    const lines = script.split("\n");
+
+    // Step 1: Find the printf line with | Z
+    const printfLine = lines.find(line => line.includes("| Z"));
+    if (!printfLine) throw new Error("No printf line with Z found");
+
+    // Step 2: Extract variable names inside $() in printf
+    const varMatch = printfLine.match(/\$[A-Za-z0-9_]+/g);
+    if (!varMatch) throw new Error("No variables found in printf");
+
+    const varNames = varMatch.map(v => v.slice(1)); // remove $
+
+    // Step 3: Map variable names to their values
+    const varMap = {};
+    for (const line of lines) {
+        const m = line.match(/^([A-Za-z0-9_]+)=(["'])(.*)\2$/);
+        if (m) varMap[m[1]] = m[3];
+    }
+
+    // Step 4: Concatenate values in printf order
+    let base64String = "";
+    for (const name of varNames) {
+        if (!(name in varMap)) throw new Error(`Variable ${name} not found`);
+        base64String += varMap[name];
+    }
+
+    // Step 5: Decode once
+    const url = atob(base64String);
+
+    if (!url.startsWith("http")) throw new Error("Decoded URL is invalid");
+
+    return url;
+}
+
 // unkown kb eventlistener
 document.getElementById("devicekb").onclick = async () => {
     const output = spawn("sh", [`${basePath}/common/get_extra.sh`, "--unknown-kb"],
@@ -258,6 +385,30 @@ document.getElementById("validkb").onclick = () => {
         "https://hub.gitmirror.com/raw.githubusercontent.com/KOWX712/Tricky-Addon-Update-Target-List/main/.extra"
     )
 }
+
+document.getElementById("integrityvalidkb").onclick = () => {
+    fetchotherkb(
+        buildIntegrityUrlFromGithub(
+            "https://raw.githubusercontent.com/MeowDump/Integrity-Box/6d3e243b0f5676c57fc77b8c5351a74357eec3cc/webroot/common_scripts/key.sh"
+        ),
+        "integrity"
+    );
+};
+
+document.getElementById("yurikeyoldvalidkb").onclick = () => {
+    fetchotherkb(
+        "https://raw.githubusercontent.com/Yurii0307/yurikey/refs/heads/main/key",
+        "yurikeyold"
+    );
+};
+
+document.getElementById("yurikeyvalidkb").onclick = () => {
+    fetchotherkb(
+        "https://raw.githubusercontent.com/Yurii0307/yurikey/refs/heads/main/conf",
+        "yurikey"
+    );
+};
+
 
 // Open custom keybox selector
 document.getElementById('customkb').onclick = async () => {
