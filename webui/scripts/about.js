@@ -29,7 +29,7 @@ document.getElementById('canary').onclick = () => {
     aboutDialog.close();
     showPrompt("prompt_checking_update", true, 10000);
     let htmlContent = '';
-    const link = "https://nightly.link/KOWX712/Tricky-Addon-Update-Target-List/workflows/build/main?preview"
+    const link = "https://nightly.link/binyaminyblatt/Tricky-Addon-Update-Target-List/workflows/build/main?preview"
     const output = spawn('sh', [`${basePath}/common/get_extra.sh`, '--download', `${link}`],
                     { env: { PATH: "$PATH:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk" } });
     output.stdout.on('data', (data) => {

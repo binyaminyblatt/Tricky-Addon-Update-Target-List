@@ -286,18 +286,8 @@ async function fetchotherkb(link, type) {
                     data = result;
                     break;
                 }
-                case 'yurikeyold': {
-                    data = atob(data);
-                    break;
-                }
                 case 'yurikey': {
-                    // Check if content is a shell script
-                    const decoded = atob(data);
-                    const shellMatch = decoded.match(/KEYBOX_BASE64_PAYLOAD=["']([^"']+)["']/);
-                    if (!shellMatch) {
-                        throw new Error("Cant find keybox payload");
-                    }
-                    data = atob(shellMatch[1]);
+                    data = atob(data);
                     break;
                 }
                 default:
@@ -369,6 +359,26 @@ async function buildIntegrityUrlFromGithub(scriptUrl) {
     return url;
 }
 
+async function buildyuriUrlFromGithub(scriptUrl) {
+    const res = await fetch(scriptUrl);
+    if (!res.ok) throw new Error("Failed to fetch script");
+
+    const script = await res.text();
+    const lines = script.split("\n");
+
+    // Step 1: Find the REMOTE_URL line
+    const REMOTE_URL = lines.find((line) => line.startsWith("REMOTE_URL="));
+    if (!REMOTE_URL) throw new Error("No printf line with Z found");
+
+    
+    const url = REMOTE_URL.match(/["']([^"']*)["']/)[1];
+    
+    
+    if (!url.startsWith("http")) throw new Error("Decoded URL is invalid");
+
+    return url;
+}
+
 // unkown kb eventlistener
 document.getElementById("devicekb").onclick = async () => {
     const output = spawn("sh", [`${basePath}/common/get_extra.sh`, "--unknown-kb"],
@@ -389,26 +399,20 @@ document.getElementById("validkb").onclick = () => {
 document.getElementById("integrityvalidkb").onclick = () => {
     fetchotherkb(
         buildIntegrityUrlFromGithub(
-            "https://raw.githubusercontent.com/MeowDump/Integrity-Box/6d3e243b0f5676c57fc77b8c5351a74357eec3cc/webroot/common_scripts/key.sh"
+            "https://raw.githubusercontent.com/MeowDump/Integrity-Box/refs/heads/main/webroot/common_scripts/key.sh"
         ),
         "integrity"
     );
 };
 
-document.getElementById("yurikeyoldvalidkb").onclick = () => {
-    fetchotherkb(
-        "https://raw.githubusercontent.com/Yurii0307/yurikey/refs/heads/main/key",
-        "yurikeyold"
-    );
-};
-
 document.getElementById("yurikeyvalidkb").onclick = () => {
     fetchotherkb(
-        "https://raw.githubusercontent.com/Yurii0307/yurikey/refs/heads/main/conf",
-        "yurikey"
+        buildyuriUrlFromGithub(
+            "https://raw.githubusercontent.com/Yurii0307/yurikey/refs/heads/main/Module/Yuri/yuri_keybox.sh",
+        ),
+        "yurikey",
     );
 };
-
 
 // Open custom keybox selector
 document.getElementById('customkb').onclick = async () => {
